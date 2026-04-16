@@ -128,6 +128,10 @@ def send_email(to_email, subject, body, attachment_path: Path):
         server.login(EMAIL, PASSWORD)
         server.send_message(msg)
 
+start_time = time.time()
+success_count = 0
+failure_count = 0
+
 # Loop through list
 for index, row in df.iterrows():
     try:
@@ -141,6 +145,14 @@ for index, row in df.iterrows():
 
         print(f"✅ Sent to {row['email']}")
         time.sleep(15)  # delay to avoid spam
+        success_count += 1
 
     except Exception as e:
         print(f"❌ Failed for {row['email']}:", e)
+        failure_count += 1
+
+end_time = time.time()
+
+print(f"Total Sent: {success_count}")
+print(f"Failed: {failure_count}")
+print(f"Time Taken: {end_time - start_time:.2f} seconds")
