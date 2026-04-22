@@ -5,6 +5,8 @@ import os
 import random
 import re
 import mimetypes
+import threading
+import queue
 from pathlib import Path
 from email import encoders
 from email.mime.base import MIMEBase
