@@ -1,4 +1,4 @@
-# Smart Mail Sender
+# BULK MAIL SENDER
 
 A bulk email sender application with both a CLI script and a Flask dashboard UI. Send personalized messages, attach resumes, and monitor sent/failed results from a friendly web interface.
 
