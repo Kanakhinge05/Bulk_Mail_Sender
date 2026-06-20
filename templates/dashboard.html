@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>Smart Mail Sender Dashboard</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css">
+    <style>
+      body { background: #f4f7fb; }
+      .card-header { font-weight: 700; }
+      .table td, .table th { vertical-align: middle; }
+      .dashboard-alert { margin-bottom: 1rem; }
+      .file-label { font-size:.9rem; color:#374151 }
+      .job-progress { height: 22px; }
+    </style>
+  </head>
+  <body class="bg-light">
+    <div class="container py-4">
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+          <h1 class="h3">Smart Mail Sender</h1>
+          <p class="text-muted mb-1">Send personalized bulk emails with attachment and track delivery status.</p>
+          <small class="text-muted">Live stats refresh every 10 seconds.</small>
+        </div>
+        <div class="text-right">
+          <div class="mb-2">
+            <small class="text-muted">Logged in as <strong>{{ session.get('user_email', 'User') }}</strong></small>
+            <a href="{{ url_for('logout') }}" class="btn btn-link btn-sm text-danger">Logout</a>
+          </div>
+          <div>
+            <a href="{{ url_for('download', filename='sent_emails.csv') }}" class="btn btn-outline-primary btn-sm">Download Sent</a>
+            <a href="{{ url_for('download', filename='wrong_emails.csv') }}" class="btn btn-outline-danger btn-sm">Download Failed</a>
+          </div>
+        </div>
+      </div>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <div class="alert alert-{{ category }}" role="alert">{{ message }}</div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      {% if missing_config %}
+        <div class="alert alert-warning" role="alert">
+          SMTP credentials are not configured. Add <code>EMAIL</code> and <code>PASSWORD</code> to your <code>.env</code> file before sending.
+        </div>
+      {% endif %}
+
+      <div class="row mb-4">
+        <div class="col-md-3">
+          <div class="card border-primary mb-3 shadow-sm">
+            <div class="card-body">
+              <h6 class="card-title text-uppercase text-muted">Sent Emails</h6>
+              <p class="card-text display-4 mb-0" id="sent-count">{{ sent_count }}</p>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card border-danger mb-3 shadow-sm">
+            <div class="card-body">
+              <h6 class="card-title text-uppercase text-muted">Failed Emails</h6>
+              <p class="card-text display-4 mb-0" id="failed-count">{{ failed_count }}</p>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card border-info mb-3 shadow-sm">
+            <div class="card-body">
+              <h6 class="card-title text-uppercase text-muted">Recipient file</h6>
+              <p class="card-text mb-0" id="recipient-file">{{ recipient_list_name or 'No file uploaded' }}</p>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card border-secondary mb-3 shadow-sm">
+            <div class="card-body">
+              <h6 class="card-title text-uppercase text-muted">Resume</h6>
+              <p class="card-text mb-0" id="resume-file">{{ resume_path or 'Not found' }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row mb-4">
+        <div class="col-md-6 mb-3">
+          <div class="card h-100">
+            <div class="card-header">Recipient List Upload</div>
+            <div class="card-body">
+              <form method="post" action="{{ url_for('upload_list') }}" enctype="multipart/form-data">
+                <div class="form-group">
+                  <label for="recipient_file">Upload CSV</label>
+                  <input type="file" name="recipient_file" id="recipient_file" class="form-control-file" accept=".csv" required>
+                  <small class="form-text text-muted">CSV must include an <code>email</code> column and optional <code>name</code>, <code>company</code>.</small>
+                </div>
+                <button type="submit" class="btn btn-primary">Upload Recipient List</button>
+              </form>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6 mb-3">
+          <div class="card h-100">
+            <div class="card-header">Resume Upload</div>
+            <div class="card-body">
+              <form method="post" action="{{ url_for('upload_resume') }}" enctype="multipart/form-data">
+                <div class="form-group">
+                  <label for="resume_file">Upload Resume</label>
+                  <input type="file" name="resume_file" id="resume_file" class="form-control-file" accept=".pdf,.docx" required>
+                  <small class="form-text text-muted">Upload a PDF or DOCX file to attach to each email.</small>
+                </div>
+                <button type="submit" class="btn btn-secondary">Upload Resume</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mb-4">
+        <div class="card-header">Send Bulk Email</div>
+        <div class="card-body">
+          <form id="send-form" method="post" action="{{ url_for('send_bulk') }}">
+            <div class="row">
+              <div class="col-lg-8">
+                <div class="form-row">
+                  <div class="form-group col-md-9">
+                    <label for="subject">Email Subject</label>
+                    <input id="subject" name="subject" class="form-control" type="text" value="" placeholder="Opportunity Inquiry" required>
+                  </div>
+                  <div class="form-group col-md-3 align-self-end">
+                    <button id="send-button" class="btn btn-success btn-block" type="submit">Start Bulk Send</button>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <div class="d-flex justify-content-between align-items-center mb-2">
+                    <label for="email_template" class="mb-0">Email Template</label>
+                    <div>
+                      <button id="template-suggestion-button" type="button" class="btn btn-outline-secondary btn-sm mr-2" onclick="window.location.href='{{ url_for('template_suggestions') }}'">Choose Email Template</button>
+                      <a href="{{ url_for('reset_template') }}" class="btn btn-outline-danger btn-sm">Reset Template</a>
+                    </div>
+                  </div>
+                  <textarea id="email_template" name="email_template" class="form-control" rows="10" placeholder="Dear {name},\n\nI hope this message finds you well.\n\n{ai_line}\n\nBest regards,\n[Your Name]">{{ email_template }}</textarea>
+                  <small class="form-text text-muted">Use <code>{name}</code> and <code>{ai_line}</code> placeholders.</small>
+                </div>
+              </div>
+            </div>
+          </form>
+          <div class="mt-4" id="job-panel" style="display:none;">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h6 class="mb-0">Sending Status</h6>
+              <span id="job-status-badge" class="badge badge-secondary">Pending</span>
+            </div>
+            <div class="progress mb-2 job-progress">
+              <div id="job-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%;">0%</div>
+            </div>
+            <div class="small text-muted">Current recipient: <span id="job-current-email">none</span></div>
+            <div class="small text-muted">Message: <span id="job-last-message">Waiting to start...</span></div>
+            <div class="small text-muted">Sent: <span id="job-sent-count">0</span> / <span id="job-total">0</span></div>
+            <div class="small text-muted">Failed: <span id="job-failed-count">0</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row mb-4">
+        <div class="col-md-12">
+          <div class="card">
+            <div class="card-header">Recipient Preview</div>
+            <div class="card-body">
+              {% if recipient_preview %}
+                <div class="table-responsive">
+                  <table class="table table-sm table-striped mb-0">
+                    <thead>
+                      <tr>
+                        {% for key in recipient_preview[0].keys() %}
+                          <th>{{ key }}</th>
+                        {% endfor %}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for row in recipient_preview %}
+                        <tr>
+                          {% for value in row.values() %}
+                            <td>{{ value }}</td>
+                          {% endfor %}
+                        </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              {% else %}
+                <p class="mb-0 text-muted">Upload a recipient CSV to preview the first 5 records here.</p>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-md-6 mb-4">
+          <div class="card">
+            <div class="card-header">Recent Sent</div>
+            <div class="card-body p-0">
+              <table class="table mb-0">
+                <thead class="thead-light">
+                  <tr><th>Email</th><th>Status</th><th>Sent At</th></tr>
+                </thead>
+                <tbody>
+                  {% for row in sent_log %}
+                    <tr><td>{{ row.email }}</td><td><span class="badge badge-success">Sent</span></td><td>{{ row.sent_at }}</td></tr>
+                  {% else %}
+                    <tr><td colspan="3" class="text-center">No sent records yet.</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6 mb-4">
+          <div class="card">
+            <div class="card-header">Recent Failures</div>
+            <div class="card-body p-0">
+              <table class="table mb-0">
+                <thead class="thead-light">
+                  <tr><th>Email</th><th>Reason</th><th>Sent At</th></tr>
+                </thead>
+                <tbody>
+                  {% for row in wrong_log %}
+                    <tr><td>{{ row.email }}</td><td>{{ row.reason }}</td><td>{{ row.sent_at }}</td></tr>
+                  {% else %}
+                    <tr><td colspan="3" class="text-center">No failures logged yet.</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+      function refreshStatus() {
+        fetch('/api/status')
+          .then(response => response.json())
+          .then(data => {
+            document.getElementById('sent-count').textContent = data.sent_count;
+            document.getElementById('failed-count').textContent = data.failed_count;
+            if (data.recipient_list) document.getElementById('recipient-file').textContent = data.recipient_list;
+            if (data.resume_file) document.getElementById('resume-file').textContent = data.resume_file;
+          })
+          .catch(() => console.warn('Unable to refresh status'));
+      }
+
+      let currentJobId = null;
+      let jobStatusTimer = null;
+
+      function updateJobPanel(job) {
+        document.getElementById('job-status-badge').textContent = job.status;
+        document.getElementById('job-progress-bar').style.width = job.progress + '%';
+        document.getElementById('job-progress-bar').textContent = job.progress + '%';
+        document.getElementById('job-current-email').textContent = job.current_email || 'none';
+        document.getElementById('job-last-message').textContent = job.last_message || 'Waiting to start...';
+        document.getElementById('job-sent-count').textContent = job.sent_count || 0;
+        document.getElementById('job-total').textContent = job.total || 0;
+        document.getElementById('job-failed-count').textContent = job.failed_count || 0;
+        document.getElementById('job-status-badge').className = 'badge ' + (job.status === 'completed' ? 'badge-success' : job.status === 'running' ? 'badge-info' : 'badge-secondary');
+      }
+
+      function fetchJobStatus() {
+        if (!currentJobId) return;
+        fetch(`/api/job-status/${currentJobId}`)
+          .then(response => response.json())
+          .then(job => {
+            updateJobPanel(job);
+            if (job.status === 'completed') {
+              clearInterval(jobStatusTimer);
+              jobStatusTimer = null;
+              document.getElementById('send-button').disabled = false;
+            }
+          })
+          .catch(() => console.warn('Unable to fetch job status'));
+      }
+
+      document.getElementById('send-form').addEventListener('submit', function(event) {
+        event.preventDefault();
+        document.getElementById('send-button').disabled = true;
+        fetch(this.action, { method: 'POST', body: new FormData(this) })
+          .then(response => response.json())
+          .then(data => {
+            if (data.error) { alert(data.error); document.getElementById('send-button').disabled = false; return; }
+            currentJobId = data.job_id;
+            document.getElementById('job-panel').style.display = 'block';
+            updateJobPanel({status:'pending', progress:0, current_email:'none', last_message:'Queued for send...', sent_count:0, failed_count:0, total:0});
+            if (jobStatusTimer) clearInterval(jobStatusTimer);
+            jobStatusTimer = setInterval(fetchJobStatus, 3000);
+          })
+          .catch(() => { alert('Unable to start bulk send.'); document.getElementById('send-button').disabled = false; });
+      });
+
+      document.addEventListener('DOMContentLoaded', function() { setInterval(refreshStatus, 10000); });
+    </script>
+  </body>
+</html>

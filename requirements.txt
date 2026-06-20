@@ -1,4 +1,7 @@
+Flask
+Werkzeug
 pandas
 python-dotenv
 openai
 email-validator
+gunicorn

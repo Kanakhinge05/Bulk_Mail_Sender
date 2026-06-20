@@ -1,2 +1,9 @@
 .env
 __pycache__/
+.venv/
+sent_emails.csv
+wrong_emails.csv
+all_sent_emails.csv
+uploads/
+user_logs/
+desktop.ini
